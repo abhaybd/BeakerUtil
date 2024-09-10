@@ -74,7 +74,7 @@ def write_dotfile(path, pattern, repl, add_if_absent=True):
     with open(path, "w") as f:
         f.write(contents)
 
-def init_shell(conf, args):
+def init_shell(conf, args, _):
     if args.shell not in SHELL_CONF_PATHS:
         print(f"Unsupported shell: {args.shell}", file=sys.stderr)
         sys.exit(1)
@@ -90,18 +90,23 @@ def init_shell(conf, args):
     print("Shell initialized! Please close and re-open any existing sessions.")
     return []
 
-def launch_interactive(conf, args):
+def requote(s: str):
+    return s.replace('"', "\\\"")
+
+def launch_interactive(conf, args, extra_args):
     cluster_util = Beaker.from_env().cluster.utilization(args.cluster)
     node_gpus = {node_util.hostname: node_util.free.gpu_count for node_util in cluster_util.nodes}
     node_hostname = max(node_gpus.keys(), key=lambda n: node_gpus[n])
     if node_gpus[node_hostname] < args.gpus:
         print("No node with enough GPUs available!")
         exit(1)
-    beaker_cmd = f"beaker session create --image {args.image} --budget ai2/prior --gpus {args.gpus} --workspace {args.workspace}"
-    ssh_cmd = f"ssh -t {node_hostname} \"{beaker_cmd}\""
+    img_arg = f"--image {args.image}" if args.image else ""
+    beaker_cmd = f"beaker session create {img_arg} --budget ai2/prior --gpus {args.gpus} --workspace {args.workspace} {' '.join(extra_args)}".strip()
+    tmux_cmd = f"tmux new-session \"{requote(beaker_cmd)}\""
+    ssh_cmd = f"ssh -t {node_hostname} \"{requote(tmux_cmd)} ; bash\""
     return [ssh_cmd]
 
-def reset(conf, args):
+def reset(conf, args, _):
     if args.command and args.command in conf["defaults"]:
         del conf["defaults"][args.command]
         print(f"Reset default parameters for command: {args.command}")
@@ -139,7 +144,10 @@ def get_args(conf):
     launch_parser.add_argument("-g", "--gpus", type=int, default=1)
     launch_parser.set_defaults(func=launch_interactive)
 
-    args = parser.parse_args()
+    args, extra_args = parser.parse_known_args()
+    assert len(extra_args) == 0 or extra_args[0] == "--", f"Unknown extra arguments: {extra_args}"
+    extra_args = extra_args[1:]
+
     if args.command not in conf["defaults"]:
         conf["defaults"][args.command] = {}
     for attr in dir(args):
@@ -148,12 +156,12 @@ def get_args(conf):
             if isinstance(v, str):
                 conf["defaults"][args.command][attr] = v
     save_conf(conf)
-    return args
+    return args, extra_args
 
 def main():
     conf = setup_and_load_conf()
-    args = get_args(conf)
-    commands = args.func(conf, args)
+    args, extra_args = get_args(conf)
+    commands = args.func(conf, args, extra_args)
     if commands:
         print("\n".join(commands))
         exit(99)
