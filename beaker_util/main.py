@@ -116,7 +116,7 @@ def add_argument(conf, parser, short, long, **kwargs):
         command_defaults = conf["defaults"][command]
         if long[2:] in command_defaults:
             kwargs["default"] = command_defaults[long[2:]]
-    if "default" not in kwargs:
+    if "default" not in kwargs and "required" not in kwargs:
         kwargs["required"] = True
     parser.add_argument(short, long, **kwargs)
 
@@ -134,7 +134,7 @@ def get_args(conf):
 
     launch_parser = subparsers.add_parser("launch", help="Launch interactive session on any available node in a cluster")
     add_argument(conf, launch_parser, "-c", "--cluster")
-    add_argument(conf, launch_parser, "-i", "--image")
+    add_argument(conf, launch_parser, "-i", "--image", required=False)
     add_argument(conf, launch_parser, "-w", "--workspace")
     launch_parser.add_argument("-g", "--gpus", type=int, default=1)
     launch_parser.set_defaults(func=launch_interactive)
