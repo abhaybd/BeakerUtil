@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name="BeakerUtil",
@@ -10,9 +10,10 @@ setup(
     # url="",
     entry_points={
         "console_scripts": [
-            "beakerutil = beaker_util.main:main"
+            "beakerutil = beaker_util.main:main",
+            "beakerlaunch = beaker_util.launch_interactive:launch"
         ]
     },
-    py_modules=["beaker_util.main"],
+    packages=find_packages(),
     install_requires=open("requirements.txt").read().split("\n")
 )

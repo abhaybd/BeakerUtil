@@ -10,25 +10,7 @@ with warnings.catch_warnings():
     from beaker import Beaker
 
 CONF_PATH = os.path.join(os.environ["HOME"], ".beakerutil.conf")
-# maps shells to startup files (paths relative to home) in decreasing order of priority
-SHELL_CONF_PATHS = {
-    "bash": [".bash_aliases", ".bashrc", ".bash_profile"],
-    "zsh": [".zsh_aliases", ".zshrc", ".zprofile"],
-    "sh": [".shrc", ".shinit", ".profile"],
-    "fish": [os.path.join(".config", "fish", "config.fish")],
-    "csh": [".cshrc"],
-    "tcsh": [".tcshrc", ".cshrc"],
-    "ksh": [".kshrc", ".profile"]
-}
-SHELL_CONF_PATHS = {
-    shell: [os.path.expanduser(os.path.join("~", p)) for p in paths] for shell, paths in SHELL_CONF_PATHS.items()
-}
 
-ALIAS_SNIPPET = f"""# >>> BeakerUtil initialize >>>
-alias beakerlaunch=\"PYTHON_PATH='{sys.executable}' source beaker_util launch\"
-# <<< BeakerUtil initialize <<<\n\n"""
-ALIAS_SNIPPET = ALIAS_SNIPPET.replace("\\", "\\\\")  # duplicate backslashes for re.sub
-ALIAS_PATTERN = r"# >>> BeakerUtil initialize >>>[\s\S]+?# <<< BeakerUtil initialize <<<\n{0,2}"
 
 def setup_and_load_conf():
     # perform first time setup, if necessary
@@ -61,6 +43,7 @@ def save_conf(conf):
     with open(CONF_PATH, "w") as f:
         yaml.dump(conf, f)
 
+
 def write_dotfile(path, pattern, repl, add_if_absent=True):
     if os.path.isfile(path):
         with open(path) as f:
@@ -74,24 +57,10 @@ def write_dotfile(path, pattern, repl, add_if_absent=True):
     with open(path, "w") as f:
         f.write(contents)
 
-def init_shell(conf, args, _):
-    if args.shell not in SHELL_CONF_PATHS:
-        print(f"Unsupported shell: {args.shell}", file=sys.stderr)
-        sys.exit(1)
-    paths = SHELL_CONF_PATHS[args.shell]
-    path = next(filter(os.path.isfile, paths), paths[-1])
-
-    print(f"Adding alias to {path}")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    write_dotfile(path, ALIAS_PATTERN, ALIAS_SNIPPET, add_if_absent=True)
-    if args.shell not in conf["shells"]:
-        conf["shells"].append(args.shell)
-    save_conf(conf)
-    print("Shell initialized! Please close and re-open any existing sessions.")
-    return []
 
 def requote(s: str):
     return s.replace("\\", "\\\\").replace('"', "\\\"")
+
 
 def launch_interactive(conf, args, extra_args):
     cluster_util = Beaker.from_env().cluster.utilization(args.cluster)
@@ -106,14 +75,16 @@ def launch_interactive(conf, args, extra_args):
     ssh_cmd = f"ssh -t {node_hostname} \"{requote(tmux_cmd)} ; bash\""
     os.execlp("/bin/bash", "/bin/bash", "-c", ssh_cmd)
 
+
 def reset(conf, args, _):
-    if args.command and args.command in conf["defaults"]:
-        del conf["defaults"][args.command]
-        print(f"Reset default parameters for command: {args.command}")
-    elif not args.command:
+    if args.reset_cmd and args.reset_cmd in conf["defaults"]:
+        del conf["defaults"][args.reset_cmd]
+        print(f"Reset default parameters for command: {args.reset_cmd}")
+    elif not args.reset_cmd:
         conf["defaults"] = {}
         print("Reset default parameters for all commands.")
     save_conf(conf)
+
 
 def add_argument(conf, parser, short, long, **kwargs):
     command = parser.prog.split(" ")[-1]
@@ -125,16 +96,14 @@ def add_argument(conf, parser, short, long, **kwargs):
         kwargs["required"] = True
     parser.add_argument(short, long, **kwargs)
 
-def get_args(conf):
-    parser = ArgumentParser(description="Intelligently spin up an interactive beaker session")
+
+def get_args(conf, argv):
+    parser = ArgumentParser(prog="beakerutil", description="Collection of utilities for Beaker")
     subparsers = parser.add_subparsers(required=True, dest="command")
 
-    init_parser = subparsers.add_parser("init", help="Register a new shell")
-    init_parser.add_argument("shell", help="The name of the shell to register")
-    init_parser.set_defaults(func=init_shell)
-
-    reset_parser = subparsers.add_parser("reset", help="Reset previously specified default arguments")
-    reset_parser.add_argument("command", nargs="?", help="The command for which the default arguments should be reset. If unspecified, reset all commands.")
+    reset_parser = subparsers.add_parser("reset", help="Reset previously specified arguments")
+    reset_parser.add_argument("reset_cmd", nargs="?", metavar="command",
+                              help="The command for which the default arguments should be reset. If unspecified, reset all commands.")
     reset_parser.set_defaults(func=reset)
 
     launch_parser = subparsers.add_parser("launch", help="Launch interactive session on any available node in a cluster")
@@ -144,7 +113,7 @@ def get_args(conf):
     launch_parser.add_argument("-g", "--gpus", type=int, default=1)
     launch_parser.set_defaults(func=launch_interactive)
 
-    args, extra_args = parser.parse_known_args()
+    args, extra_args = parser.parse_known_args(argv)
     assert len(extra_args) == 0 or extra_args[0] == "--", f"Unknown extra arguments: {extra_args}"
     extra_args = extra_args[1:]
 
@@ -158,10 +127,14 @@ def get_args(conf):
     save_conf(conf)
     return args, extra_args
 
-def main():
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
     conf = setup_and_load_conf()
-    args, extra_args = get_args(conf)
+    args, extra_args = get_args(conf, argv)
     args.func(conf, args, extra_args)
+
 
 if __name__ == "__main__":
     main()
