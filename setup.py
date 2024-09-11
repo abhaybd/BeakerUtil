@@ -5,9 +5,9 @@ setup(
     version="0.1.0",
     author="Abhay Deshpande",
     description="Command-line tool for beaker utilities",
-    # long_description=open("README.md").read(),
-    # long_description_content_type="text/markdown",
-    # url="",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    url="https://github.com/abhaybd/BeakerUtil",
     entry_points={
         "console_scripts": [
             "beakerutil = beaker_util.main:main",
