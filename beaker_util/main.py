@@ -72,8 +72,7 @@ def launch_interactive(conf, args, extra_args):
     img_arg = f"--image {args.image}" if args.image else ""
     beaker_cmd = f"beaker session create {img_arg} --budget ai2/prior --gpus {args.gpus} --workspace {args.workspace} {' '.join(extra_args)}".strip()
     tmux_cmd = f"tmux new-session \"{requote(beaker_cmd)}\""
-    ssh_cmd = f"ssh -t {node_hostname} \"{requote(tmux_cmd)} ; bash\""
-    os.execlp("/bin/bash", "/bin/bash", "-c", ssh_cmd)
+    os.execlp("ssh", "ssh", "-t", node_hostname, f"{tmux_cmd} ; bash")
 
 
 def reset(conf, args, _):
