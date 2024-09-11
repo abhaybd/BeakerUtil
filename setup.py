@@ -8,7 +8,11 @@ setup(
     # long_description=open("README.md").read(),
     # long_description_content_type="text/markdown",
     # url="",
+    entry_points={
+        "console_scripts": [
+            "beakerutil = beaker_util.main:main"
+        ]
+    },
     py_modules=["beaker_util.main"],
-    scripts=["bin/beaker_util"],
     install_requires=open("requirements.txt").read().split("\n")
 )

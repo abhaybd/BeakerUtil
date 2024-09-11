@@ -91,7 +91,7 @@ def init_shell(conf, args, _):
     return []
 
 def requote(s: str):
-    return s.replace('"', "\\\"")
+    return s.replace("\\", "\\\\").replace('"', "\\\"")
 
 def launch_interactive(conf, args, extra_args):
     cluster_util = Beaker.from_env().cluster.utilization(args.cluster)
@@ -104,7 +104,7 @@ def launch_interactive(conf, args, extra_args):
     beaker_cmd = f"beaker session create {img_arg} --budget ai2/prior --gpus {args.gpus} --workspace {args.workspace} {' '.join(extra_args)}".strip()
     tmux_cmd = f"tmux new-session \"{requote(beaker_cmd)}\""
     ssh_cmd = f"ssh -t {node_hostname} \"{requote(tmux_cmd)} ; bash\""
-    return [ssh_cmd]
+    os.execlp("/bin/bash", "/bin/bash", "-c", ssh_cmd)
 
 def reset(conf, args, _):
     if args.command and args.command in conf["defaults"]:
@@ -161,10 +161,7 @@ def get_args(conf):
 def main():
     conf = setup_and_load_conf()
     args, extra_args = get_args(conf)
-    commands = args.func(conf, args, extra_args)
-    if commands:
-        print("\n".join(commands))
-        exit(99)
+    args.func(conf, args, extra_args)
 
 if __name__ == "__main__":
     main()
