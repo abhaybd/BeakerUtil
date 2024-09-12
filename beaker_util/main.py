@@ -62,7 +62,7 @@ def requote(s: str):
     return s.replace("\\", "\\\\").replace('"', "\\\"")
 
 
-def launch_interactive(conf, args, extra_args):
+def launch_interactive(_, args, extra_args: list):
     cluster_util = Beaker.from_env().cluster.utilization(args.cluster)
     node_gpus = {node_util.hostname: node_util.free.gpu_count for node_util in cluster_util.nodes}
     node_hostname = max(node_gpus.keys(), key=lambda n: node_gpus[n])
@@ -70,7 +70,10 @@ def launch_interactive(conf, args, extra_args):
         print("No node with enough GPUs available!")
         exit(1)
     img_arg = f"--image {args.image}" if args.image else ""
-    beaker_cmd = f"beaker session create {img_arg} --budget ai2/prior --gpus {args.gpus} --workspace {args.workspace} {' '.join(extra_args)}".strip()
+    if args.mount_src and args.mount_dst:
+        extra_args.append(f"--mount {args.mount_src}={args.mount_dst}")
+        extra_args.append(f"--workdir {args.mount_dst}")
+    beaker_cmd = f"beaker session create {img_arg} --budget ai2/prior --gpus {args.gpus} --workspace {args.workspace} {args.additional_args or ''} {' '.join(extra_args)}".strip()
     tmux_cmd = f"tmux new-session \"{requote(beaker_cmd)}\""
     os.execlp("ssh", "ssh", "-t", node_hostname, f"{tmux_cmd} ; bash")
 
@@ -107,8 +110,12 @@ def get_args(conf, argv):
 
     launch_parser = subparsers.add_parser("launch", help="Launch interactive session on any available node in a cluster")
     add_argument(conf, launch_parser, "-c", "--cluster")
-    add_argument(conf, launch_parser, "-i", "--image", required=False)
     add_argument(conf, launch_parser, "-w", "--workspace")
+    add_argument(conf, launch_parser, "-i", "--image", required=False)
+    add_argument(conf, launch_parser, "-s", "--mount_src", required=False, help="Network location to mount to the container")
+    add_argument(conf, launch_parser, "-d", "--mount_dst", required=False, help="Mount destination in the container")
+    add_argument(conf, launch_parser, "-a", "--additional_args", required=False,
+                 help="Additional arguments to pass to beaker, that will be remembered for future launches")
     launch_parser.add_argument("-g", "--gpus", type=int, default=1)
     launch_parser.set_defaults(func=launch_interactive)
 
