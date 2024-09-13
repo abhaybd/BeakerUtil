@@ -99,7 +99,9 @@ def launch_interactive(_, args, extra_args: list):
     if args.mount_src and args.mount_dst:
         extra_args.append(f"--mount {args.mount_src}={args.mount_dst}")
         extra_args.append(f"--workdir {args.mount_dst}")
-    beaker_cmd = f"beaker session create {img_arg} --budget ai2/prior --gpus {args.gpus} --workspace {args.workspace} {args.additional_args or ''} {' '.join(extra_args)}".strip()
+    beaker_cmd = (f"beaker session create {img_arg}"
+                  + f" --budget ai2/prior --gpus {args.gpus} --workspace {args.workspace}"
+                  + f" {args.additional_args or ''} {' '.join(extra_args)}").strip()
     tmux_cmd = f"tmux new-session \"{requote(beaker_cmd)}\""
     os.execlp("ssh", "ssh", "-t", node_hostname, f"{tmux_cmd} ; bash")
 
@@ -134,15 +136,15 @@ def get_args(conf, argv):
                               help="The command for which the default arguments should be reset. If unspecified, reset all commands.")
     reset_parser.set_defaults(func=reset)
 
-    launch_parser = subparsers.add_parser("launch", help="Launch interactive session on any available node in a cluster")
-    add_argument(conf, launch_parser, "-c", "--cluster")
-    add_argument(conf, launch_parser, "-w", "--workspace")
+    launch_parser = subparsers.add_parser(
+        "launch", help="Launch interactive session on any available node in a cluster. All arguments except -g are remembered.")
+    add_argument(conf, launch_parser, "-c", "--cluster", help="The cluster to launch the session on")
+    add_argument(conf, launch_parser, "-w", "--workspace", help="The workspace to launch the session in")
     add_argument(conf, launch_parser, "-n", "--node", required=False, help="Preferred node to launch the session on")
-    add_argument(conf, launch_parser, "-i", "--image", required=False)
+    add_argument(conf, launch_parser, "-i", "--image", required=False, help="The beaker image to use for the session")
     add_argument(conf, launch_parser, "-s", "--mount_src", required=False, help="Network location to mount to the container")
     add_argument(conf, launch_parser, "-d", "--mount_dst", required=False, help="Mount destination in the container")
-    add_argument(conf, launch_parser, "-a", "--additional_args", required=False,
-                 help="Additional arguments to pass to beaker, that will be remembered for future launches")
+    add_argument(conf, launch_parser, "-a", "--additional_args", required=False, help="Additional arguments to pass verbatim to beaker")
     launch_parser.add_argument("-g", "--gpus", type=int, default=1)
     launch_parser.set_defaults(func=launch_interactive)
 

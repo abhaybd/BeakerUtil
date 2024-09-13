@@ -18,6 +18,27 @@ Run `beakerutil -h` for more information.
 
 Note that some arguments, after being specified, will be remembered and won't have to be specified again.
 
+### Using `beakerutil launch`
+
+The first time using `beakerutil launch`, you must specifiy the `--workspace` and `--cluster` parameters. These will be remembered for later.
+Note that the budget is hardcoded to `ai2/prior`.
+
+If you specify the `--node` parameter, this node will be preferentially used if it has sufficient available resources.
+
+For example, my first launch looks like this:
+
+```bash
+beakerlaunch -w ai2/abhayd -c prior-elanding -i beaker://abhayd/abhayd_torch -s hostpath:///net/nfs2.prior/abhayd -d /root/abhayd -a="--bare"
+```
+
+Note the use of the `=` symbol with the `-a` flag. After this command, I can simply run `beakerlaunch` to automatically perform the following steps:
+
+1. Connect to any available node with sufficient resources (Optionally specified with `-g` flag for GPUs)
+2. Log in to Beaker on the server if necessary
+3. Pull the Beaker image `abhayd/abhayd_torch`
+4. Launch a tmux session on the server, within which it launches an interactive Beaker session as root (specified by `--bare` flag)
+5. Mount my code from NFS onto the `/root/abhayd` folder in the session and set that as the initial working directory
+
 ### Shortcuts
 
 Some shorthand commands are provided for convenience:
