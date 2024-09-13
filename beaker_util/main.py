@@ -69,6 +69,15 @@ def launch_interactive(_, args, extra_args: list):
     if node_gpus[node_hostname] < args.gpus:
         print("No node with enough GPUs available!")
         exit(1)
+    if args.node:
+        if not args.node.endswith(".reviz.ai2.in"):
+            args.node += ".reviz.ai2.in"
+        if args.node not in node_gpus:
+            print(f"Node {args.node} not found in the cluster, using node {node_hostname} instead.")
+        elif node_gpus[args.node] < args.gpus:
+            print(f"Node {args.node} has insufficient GPUs, using node {node_hostname} instead.")
+        else:
+            node_hostname = args.node
     img_arg = f"--image {args.image}" if args.image else ""
     if args.mount_src and args.mount_dst:
         extra_args.append(f"--mount {args.mount_src}={args.mount_dst}")
@@ -111,6 +120,7 @@ def get_args(conf, argv):
     launch_parser = subparsers.add_parser("launch", help="Launch interactive session on any available node in a cluster")
     add_argument(conf, launch_parser, "-c", "--cluster")
     add_argument(conf, launch_parser, "-w", "--workspace")
+    add_argument(conf, launch_parser, "-n", "--node", required=False, help="Preferred node to launch the session on")
     add_argument(conf, launch_parser, "-i", "--image", required=False)
     add_argument(conf, launch_parser, "-s", "--mount_src", required=False, help="Network location to mount to the container")
     add_argument(conf, launch_parser, "-d", "--mount_dst", required=False, help="Mount destination in the container")
