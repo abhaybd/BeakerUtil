@@ -1,2 +1,3 @@
 beaker-py
 PyYAML
+fabric

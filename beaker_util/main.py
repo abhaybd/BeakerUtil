@@ -4,6 +4,8 @@ import os
 import yaml
 import re
 
+import fabric
+
 import warnings
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -63,7 +65,8 @@ def requote(s: str):
 
 
 def launch_interactive(_, args, extra_args: list):
-    cluster_util = Beaker.from_env().cluster.utilization(args.cluster)
+    beaker = Beaker.from_env()
+    cluster_util = beaker.cluster.utilization(args.cluster)
     node_gpus = {node_util.hostname: node_util.free.gpu_count for node_util in cluster_util.nodes}
     node_hostname = max(node_gpus.keys(), key=lambda n: node_gpus[n])
     if node_gpus[node_hostname] < args.gpus:
@@ -78,6 +81,20 @@ def launch_interactive(_, args, extra_args: list):
             print(f"Node {args.node} has insufficient GPUs, using node {node_hostname} instead.")
         else:
             node_hostname = args.node
+
+    print(f"Launching interactive session on node {node_hostname} with {args.gpus} GPUs")
+    print("Logging into beaker...")
+    conn = fabric.Connection(node_hostname)
+    conn.run(f"beaker config set user_token {beaker.account.config.user_token}")
+
+    if args.image:
+        if not args.image.startswith("beaker://"):
+            args.image = f"beaker://{args.image}"
+        img_name = args.image[len("beaker://"):]
+        print(f"Pulling beaker image {img_name}...")
+        conn.run(f"beaker image pull {img_name}")
+    conn.close()
+
     img_arg = f"--image {args.image}" if args.image else ""
     if args.mount_src and args.mount_dst:
         extra_args.append(f"--mount {args.mount_src}={args.mount_dst}")
