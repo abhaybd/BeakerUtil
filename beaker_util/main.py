@@ -107,16 +107,25 @@ def launch_interactive(_, args, extra_args: list):
 
 
 def reset(conf, args, _):
-    if args.reset_cmd and args.reset_cmd in conf["defaults"]:
-        del conf["defaults"][args.reset_cmd]
-        print(f"Reset default parameters for command: {args.reset_cmd}")
-    elif not args.reset_cmd:
+    if args.reset_cmd:
+        if args.reset_cmd not in conf["defaults"]:
+            print(f"No default parameters set for command: {args.reset_cmd}")
+        elif args.arg:
+            if args.arg not in conf["defaults"][args.reset_cmd]:
+                print(f"No default parameter set for argument: {args.arg}")
+            else:
+                del conf["defaults"][args.reset_cmd][args.arg]
+                print(f"Reset default parameter for argument: {args.arg}")
+        else:
+            del conf["defaults"][args.reset_cmd]
+            print(f"Reset default parameters for command: {args.reset_cmd}")
+    else:
         conf["defaults"] = {}
         print("Reset default parameters for all commands.")
     save_conf(conf)
 
 
-def add_argument(conf, parser, short, long, **kwargs):
+def add_argument(conf, parser: ArgumentParser, short, long, **kwargs):
     command = parser.prog.split(" ")[-1]
     if command in conf["defaults"]:
         command_defaults = conf["defaults"][command]
@@ -134,6 +143,7 @@ def get_args(conf, argv):
     reset_parser = subparsers.add_parser("reset", help="Reset previously specified arguments")
     reset_parser.add_argument("reset_cmd", nargs="?", metavar="command",
                               help="The command for which the default arguments should be reset. If unspecified, reset all commands.")
+    reset_parser.add_argument("arg", nargs="?", help="The argument to reset. If unspecified, reset all arguments for the command.")
     reset_parser.set_defaults(func=reset)
 
     launch_parser = subparsers.add_parser(
