@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 import sys
 import os
+from typing import List, Tuple
 import yaml
 import re
 
@@ -9,7 +10,7 @@ import fabric
 import warnings
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    from beaker import Beaker
+    from beaker import Beaker, JobKind, Job, Node
 
 CONF_PATH = os.path.join(os.environ["HOME"], ".beakerutil.conf")
 
@@ -63,6 +64,71 @@ def write_dotfile(path, pattern, repl, add_if_absent=True):
 def requote(s: str):
     return s.replace("\\", "\\\\").replace('"', "\\\"")
 
+def get_sessions_and_nodes(beaker: Beaker):
+    sessions = beaker.job.list(author=beaker.account.whoami().name)
+    interactive = [(j, beaker.node.get(j.node)) for j in sessions if j.kind == JobKind.session]
+    noninteractive = [(j, beaker.node.get(j.node)) for j in sessions if j.kind == JobKind.execution]
+    interactive.sort(key=lambda x: x[1].hostname + x[0].id)
+    noninteractive.sort(key=lambda x: x[1].hostname + x[0].id)
+    return interactive, noninteractive
+
+def list_sessions(_, __, ___):
+    beaker = Beaker.from_env()
+    sessions = beaker.job.list(author=beaker.account.whoami().name)
+
+    idx = 0
+    def print_sessions(title, s: List[Tuple[Job, Node]]):
+        nonlocal idx
+        if len(s) == 0:
+            return
+        print(title)
+        for j, n in s:
+            name = j.name or j.id
+            print(f"\t{idx}: Session {name} using {len(j.limits.gpus)} GPU(s) on {n.hostname}, status={j.status.current}")
+            idx += 1
+
+    if len(sessions):
+        inter, noninter = get_sessions_and_nodes(beaker)
+        print_sessions("Interactive sessions:", inter)
+        print_sessions("Noninteractive sessions:", noninter)
+    else:
+        print(f"No sessions found for author {beaker.account.whoami().name}.")
+
+
+def attach(_, args, __):
+    beaker = Beaker.from_env()
+    sessions = beaker.job.list(author=beaker.account.whoami().name)
+    if len(sessions) == 0:
+        print(f"No sessions found for author {beaker.account.whoami().name}.")
+        exit(1)
+    elif args.session_idx is not None:
+        if args.session_idx < 0 or args.session_idx >= len(sessions):
+            print(f"Invalid session index {args.session_idx}!")
+            exit(1)
+        inter, noninter = get_sessions_and_nodes(beaker)
+        if args.session_idx < len(inter):
+            session, _ = inter[args.session_idx]
+        else:
+            session, _ = noninter[args.session_idx - len(inter)]
+    elif args.name is not None:
+        session = next((s for s in sessions if s.name == args.name), None)
+        if session is None:
+            print(f"No session found with name {args.name}!")
+            exit(1)
+    elif args.id is not None:
+        session = next((s for s in sessions if s.id == args.id), None)
+        if session is None:
+            print(f"No session found with id {args.id}!")
+            exit(1)
+    elif len(sessions) == 1:
+        session = sessions[0]
+    else:
+        print("No session specified and no unique session found!")
+        exit(1)
+    node = beaker.node.get(session.node)
+    print(f"Attempting to attach to session {session.name or session.id} on node {node.hostname}...")
+    tmux_cmd = f"tmux new-session \"beaker session attach {session.id}\""
+    os.execlp("ssh", "ssh", "-t", node.hostname, f"{tmux_cmd}")
 
 def launch_interactive(_, args, extra_args: list):
     beaker = Beaker.from_env()
@@ -157,6 +223,16 @@ def get_args(conf, argv):
     add_argument(conf, launch_parser, "-a", "--additional_args", required=False, help="Additional arguments to pass verbatim to beaker")
     launch_parser.add_argument("-g", "--gpus", type=int, default=1)
     launch_parser.set_defaults(func=launch_interactive)
+
+    list_parser = subparsers.add_parser("list", help="List all sessions")
+    list_parser.set_defaults(func=list_sessions)
+
+    attach_parser = subparsers.add_parser("attach", help="Attach to a running session")
+    attach_group = attach_parser.add_mutually_exclusive_group(required=False)
+    attach_group.add_argument("-n", "--name", help="The name of the session to attach to")
+    attach_group.add_argument("-i", "--id", help="The id of the session to attach to")
+    attach_group.add_argument("session_idx", type=int, nargs="?", help="The index of the session to attach to")
+    attach_parser.set_defaults(func=attach)
 
     args, extra_args = parser.parse_known_args(argv)
     assert len(extra_args) == 0 or extra_args[0] == "--", f"Unknown extra arguments: {extra_args}"
