@@ -197,10 +197,12 @@ def reset(conf, args, _):
 
 def add_argument(conf, parser: ArgumentParser, short, long, **kwargs):
     command = parser.prog.split(" ")[-1]
+    arg_name = long[2:]
     if command in conf["defaults"]:
         command_defaults = conf["defaults"][command]
-        if long[2:] in command_defaults:
-            kwargs["default"] = command_defaults[long[2:]]
+        if arg_name in command_defaults:
+            t = kwargs.get("type", str)
+            kwargs["default"] = t(command_defaults[arg_name])
     if "default" not in kwargs and "required" not in kwargs:
         kwargs["required"] = True
     parser.add_argument(short, long, **kwargs)
@@ -225,7 +227,7 @@ def get_args(conf, argv):
     add_argument(conf, launch_parser, "-s", "--mount_src", required=False, help="Network location to mount to the container. Remembered.")
     add_argument(conf, launch_parser, "-d", "--mount_dst", required=False, help="Mount destination in the container. Remembered.")
     add_argument(conf, launch_parser, "-a", "--additional_args", required=False, help="Additional arguments to pass verbatim to beaker. Remembered.")
-    launch_parser.add_argument("-g", "--gpus", type=int, default=1)
+    add_argument(conf, launch_parser, "-g", "--gpus", type=int, default=1, help="Number of GPUs to request. Remembered.")
     launch_parser.add_argument("--dry-run", action="store_true", help="Print the command that would be executed without running it")
     launch_parser.set_defaults(func=launch_interactive)
 
@@ -248,8 +250,8 @@ def get_args(conf, argv):
     for attr in dir(args):
         if attr[0] != "_":
             v = getattr(args, attr)
-            if isinstance(v, str):
-                conf["defaults"][args.command][attr] = v
+            if isinstance(v, (str, int)):
+                conf["defaults"][args.command][attr] = str(v)
     save_conf(conf)
     return args, extra_args
 
