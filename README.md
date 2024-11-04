@@ -39,6 +39,24 @@ Note the use of the `=` symbol with the `-a` flag. After this command, I can sim
 4. Launch a tmux session on the server, within which it launches an interactive Beaker session as root (specified by `--bare` flag)
 5. Mount my code from NFS onto the `/root/abhayd` folder in the session and set that as the initial working directory
 
+### Using `beakerutil list`
+
+`beakerutil list` is a straightforward command, it takes no arguments and prints the currently running beaker jobs, both interactive and noninteractive. For example, the output may look like this:
+```bash
+Interactive sessions:
+    0: Session 01JBWFVSS0HNZWW5CT8C84F0J1 using 1 GPU(s) on prior-elanding-62.reviz.ai2.in, status=idle
+```
+In this case, there is only one session, with index 0 and ID `01JBWFVSS0HNZWW5CT8C84F0J1`.
+
+### Using `beakerutil attach`
+
+Since `beakerutil launch` can launch a session on an unspecified node, it might be annoying to manually connect to the session. `beakerutil attach` can automatically connect to the right node and attach to the correct session. For example, say the output of `beakerutil list` looks like this:
+```bash
+Interactive sessions:
+    0: Session 01JBWFVSS0HNZWW5CT8C84F0J1 using 1 GPU(s) on prior-elanding-62.reviz.ai2.in, status=idle
+```
+Running `beakerutil attach 0` will connect to the session at index 0. Alternatively, you can specify the session ID or name with the `--id` or `--name` flags, respectively. If you only have one session running (as is the case here), you can simply run `beakerutil attach` (with no arguments) to attach to that session.
+
 ### Shortcuts
 
 Some shorthand commands are provided for convenience:

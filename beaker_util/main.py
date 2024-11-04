@@ -83,8 +83,8 @@ def list_sessions(_, __, ___):
             return
         print(title)
         for j, n in s:
-            name = j.name or j.id
-            print(f"\t{idx}: Session {name} using {len(j.limits.gpus)} GPU(s) on {n.hostname}, status={j.status.current}")
+            name_str = f" (name={j.name})" if j.name else ""
+            print(f"\t{idx}: Session {j.id}{name_str} using {len(j.limits.gpus)} GPU(s) on {n.hostname}, status={j.status.current}")
             idx += 1
 
     if len(sessions):
@@ -132,6 +132,7 @@ def attach(_, args, __):
 
 def launch_interactive(_, args, extra_args: list):
     beaker = Beaker.from_env()
+    print(f"Attempting to launch interactive session on cluster {args.cluster}...")
     cluster_util = beaker.cluster.utilization(args.cluster)
     node_gpus = {node_util.hostname: node_util.free.gpu_count for node_util in cluster_util.nodes}
     node_hostname = max(node_gpus.keys(), key=lambda n: node_gpus[n])
@@ -169,7 +170,10 @@ def launch_interactive(_, args, extra_args: list):
                   + f" --budget ai2/prior --gpus {args.gpus} --workspace {args.workspace}"
                   + f" {args.additional_args or ''} {' '.join(extra_args)}").strip()
     tmux_cmd = f"tmux new-session \"{requote(beaker_cmd)}\""
-    os.execlp("ssh", "ssh", "-t", node_hostname, f"{tmux_cmd} ; bash")
+    if args.dry_run:
+        print(f"Would execute: ssh -t {node_hostname} {tmux_cmd}")
+    else:
+        os.execlp("ssh", "ssh", "-t", node_hostname, f"{tmux_cmd} ; bash")
 
 
 def reset(conf, args, _):
@@ -213,15 +217,16 @@ def get_args(conf, argv):
     reset_parser.set_defaults(func=reset)
 
     launch_parser = subparsers.add_parser(
-        "launch", help="Launch interactive session on any available node in a cluster. All arguments except -g are remembered.")
-    add_argument(conf, launch_parser, "-c", "--cluster", help="The cluster to launch the session on")
-    add_argument(conf, launch_parser, "-w", "--workspace", help="The workspace to launch the session in")
-    add_argument(conf, launch_parser, "-n", "--node", required=False, help="Preferred node to launch the session on")
-    add_argument(conf, launch_parser, "-i", "--image", required=False, help="The beaker image to use for the session")
-    add_argument(conf, launch_parser, "-s", "--mount_src", required=False, help="Network location to mount to the container")
-    add_argument(conf, launch_parser, "-d", "--mount_dst", required=False, help="Mount destination in the container")
-    add_argument(conf, launch_parser, "-a", "--additional_args", required=False, help="Additional arguments to pass verbatim to beaker")
+        "launch", help="Launch interactive session on any available node in a cluster.")
+    add_argument(conf, launch_parser, "-c", "--cluster", help="The cluster to launch the session on. Remembered.")
+    add_argument(conf, launch_parser, "-w", "--workspace", help="The workspace to launch the session in. Remembered.")
+    add_argument(conf, launch_parser, "-n", "--node", required=False, help="Preferred node to launch the session on. Remembered.")
+    add_argument(conf, launch_parser, "-i", "--image", required=False, help="The beaker image to use for the session. Remembered.")
+    add_argument(conf, launch_parser, "-s", "--mount_src", required=False, help="Network location to mount to the container. Remembered.")
+    add_argument(conf, launch_parser, "-d", "--mount_dst", required=False, help="Mount destination in the container. Remembered.")
+    add_argument(conf, launch_parser, "-a", "--additional_args", required=False, help="Additional arguments to pass verbatim to beaker. Remembered.")
     launch_parser.add_argument("-g", "--gpus", type=int, default=1)
+    launch_parser.add_argument("--dry-run", action="store_true", help="Print the command that would be executed without running it")
     launch_parser.set_defaults(func=launch_interactive)
 
     list_parser = subparsers.add_parser("list", help="List all sessions")
