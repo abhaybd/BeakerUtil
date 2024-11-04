@@ -151,15 +151,22 @@ def launch_interactive(_, args, extra_args: list):
 
     print(f"Launching interactive session on node {node_hostname} with {args.gpus} GPUs")
     print("Logging into beaker...")
+    beaker_login_cmd = f"beaker config set user_token {beaker.account.config.user_token}"
     conn = fabric.Connection(node_hostname)
-    conn.run(f"beaker config set user_token {beaker.account.config.user_token}")
+    if args.dry_run:
+        print(f"Would run on node: {beaker_login_cmd}")
+    else:
+        conn.run(beaker_login_cmd)
 
     if args.image:
         if not args.image.startswith("beaker://"):
             args.image = f"beaker://{args.image}"
         img_name = args.image[len("beaker://"):]
         print(f"Pulling beaker image {img_name}...")
-        conn.run(f"beaker image pull {img_name}")
+        if args.dry_run:
+            print(f"Would run on node: beaker image pull {img_name}")
+        else:
+            conn.run(f"beaker image pull {img_name}")
     conn.close()
 
     img_arg = f"--image {args.image}" if args.image else ""
