@@ -39,6 +39,14 @@ Note the use of the `=` symbol with the `-a` flag. After this command, I can sim
 4. Launch a tmux session on the server, within which it launches an interactive Beaker session as root (specified by `--bare` flag)
 5. Mount my code from NFS onto the `/root/abhayd` folder in the session and set that as the initial working directory
 
+#### Extra Arguments
+
+Extra arguments to pass to `beaker` can also be passed as additional positional arguments preceded by the delimeter `--`. The main difference between this and using the `-a` flag is that **this method does not remember arguments, while `-a` does**. For example, if you wanted to save the beaker image from this session, you could do:
+
+```bash
+beakerlaunch -- --save-image
+```
+
 ### Using `beakerutil list`
 
 `beakerutil list` is a straightforward command, it takes no arguments and prints the currently running beaker jobs, both interactive and noninteractive. For example, the output may look like this:
