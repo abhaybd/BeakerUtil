@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="BeakerUtil",
-    version="0.1.0",
+    version="0.1.1",
     author="Abhay Deshpande",
     description="Command-line tool for beaker utilities",
     long_description=open("README.md").read(),

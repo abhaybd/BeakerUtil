@@ -84,7 +84,16 @@ def list_sessions(_, __, ___):
         print(title)
         for j, n in s:
             name_str = f" (name={j.name})" if j.name else ""
-            print(f"\t{idx}: Session {j.id}{name_str} using {len(j.limits.gpus)} GPU(s) on {n.hostname}, status={j.status.current}")
+            reserved_str = "with no resources reserved"
+            if j.limits is not None:
+                reserved_str = f"using: [{len(j.limits.gpus)} GPU(s)"
+                if j.limits.memory:
+                    reserved_str += f", {j.limits.memory} of memory"
+                if j.limits.cpu_count:
+                    reserved_str += f", {j.limits.cpu_count:g} CPU(s)"
+                reserved_str += "]"
+
+            print(f"\t{idx}: Session {j.id}{name_str} on node {n.hostname} {reserved_str}, status={j.status.current}")
             idx += 1
 
     if len(sessions):
