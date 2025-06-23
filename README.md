@@ -5,8 +5,7 @@ This project is a collection of command-line utilities for [Beaker](https://beak
 ## Installation
 
 1. Ensure that Beaker is set up locally by following [these instructions](https://beaker-docs.apps.allenai.org/start/install.html).
-2. Clone this project and `cd` to the project root.
-3. Install with `pip install .`
+2. Install this project with `pip install git+https://github.com/abhaybd/BeakerUtil.git`
 
 ## Usage
 

@@ -1,17 +1,18 @@
 from argparse import ArgumentParser
-import sys
+from copy import deepcopy
 import os
-from typing import List, Tuple
-import yaml
 import re
-
+import sys
 import warnings
+
+import yaml
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from beaker import Beaker, JobKind, Job, Node
 
 CONF_DIR = os.path.join(os.environ["HOME"], ".beakerutil")
 LAUNCH_CONF_PATH = os.path.abspath(os.path.join(CONF_DIR, "launch.conf"))
+DEFAULT_LAUNCH_CONFIG = "DEFAULT"
 
 
 def requote(s: str):
@@ -37,7 +38,7 @@ def list_sessions(_, __):
     sessions = beaker.job.list(author=beaker.account.whoami().name)
 
     idx = 0
-    def print_sessions(title, s: List[Tuple[Job, Node]]):
+    def print_sessions(title, s: list[tuple[Job, Node]]):
         nonlocal idx
         if len(s) == 0:
             return
@@ -102,18 +103,18 @@ def attach(args, _):
 def launch_interactive(args, extra_args: list[str]):
     beaker = Beaker.from_env()
 
-    if not os.path.isfile(LAUNCH_CONF_PATH):
+    try:
+        with open(LAUNCH_CONF_PATH, "r") as f:
+            conf: dict[str, dict[str, str]] = yaml.safe_load(f)
+    except FileNotFoundError:
         print(f"No launch configuration found at {LAUNCH_CONF_PATH}! Create one to use this command.")
         exit(1)
-
-    with open(LAUNCH_CONF_PATH, "r") as f:
-        conf = yaml.safe_load(f)
 
     if args.launch_config not in conf:
         print(f"No launch configuration found for {args.launch_config}!")
         exit(1)
 
-    launch_conf: dict[str, str] = conf["DEFAULT"]
+    launch_conf = conf.get(DEFAULT_LAUNCH_CONFIG, {})
     launch_conf.update(conf[args.launch_config])
 
     clusters = find_clusters(beaker, launch_conf["cluster"])
@@ -142,17 +143,27 @@ def launch_interactive(args, extra_args: list[str]):
         os.execlp("beaker", *beaker_cmd.split())
 
 
-def add_argument(conf, parser: ArgumentParser, short, long, **kwargs):
-    command = parser.prog.split(" ")[-1]
-    arg_name = long[2:]
-    if command in conf["defaults"]:
-        command_defaults = conf["defaults"][command]
-        if arg_name in command_defaults:
-            t = kwargs.get("type", str)
-            kwargs["default"] = t(command_defaults[arg_name])
-    if "default" not in kwargs and "required" not in kwargs:
-        kwargs["required"] = True
-    parser.add_argument(short, long, **kwargs)
+class ConfigDumper(yaml.SafeDumper):
+    """
+    Custom YAML dumper to insert blank lines between top-level objects.
+    See: https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
+    """
+    def write_line_break(self, data=None):
+        super().write_line_break(data)
+        if len(self.indents) == 1:
+            super().write_line_break()
+
+
+def view_config(args, _):
+    if args.config_type == "launch":
+        with open(LAUNCH_CONF_PATH, "r") as f:
+            launch_conf: dict[str, dict] = yaml.safe_load(f)
+        default_conf = launch_conf.pop(DEFAULT_LAUNCH_CONFIG, {})
+        for conf in launch_conf.values():
+            conf.update(deepcopy(default_conf))
+        print(yaml.dump(launch_conf, indent=4, Dumper=ConfigDumper))
+    else:
+        raise ValueError(f"Unknown configuration type: {args.config_type}")
 
 
 def get_args(argv):
@@ -160,7 +171,13 @@ def get_args(argv):
     subparsers = parser.add_subparsers(required=True, dest="command")
 
     launch_parser = subparsers.add_parser("launch", help="Launch interactive session on any available node in a cluster.", allow_abbrev=False)
-    launch_parser.add_argument("launch_config", help="The launch configuration to use.")
+    if os.path.isfile(LAUNCH_CONF_PATH):
+        with open(LAUNCH_CONF_PATH, "r") as f:
+            launch_conf: dict[str, dict] = yaml.safe_load(f)
+        available_launch_configs = sorted(launch_conf.keys() - {DEFAULT_LAUNCH_CONFIG})
+    else:
+        available_launch_configs = []
+    launch_parser.add_argument("launch_config", help="The launch configuration to use.", choices=available_launch_configs)
     launch_parser.add_argument("--dry-run", action="store_true", help="Print the command that would be executed without running it")
     launch_parser.set_defaults(func=launch_interactive)
 
@@ -173,6 +190,10 @@ def get_args(argv):
     attach_group.add_argument("-i", "--id", help="The id of the session to attach to")
     attach_group.add_argument("session_idx", type=int, nargs="?", help="The index of the session to attach to")
     attach_parser.set_defaults(func=attach)
+
+    config_parser = subparsers.add_parser("config", help="View configuration", allow_abbrev=False)
+    config_parser.add_argument("config_type", help="The type of configuration to view", choices=["launch"])
+    config_parser.set_defaults(func=view_config)
 
     args, extra_args = parser.parse_known_args(argv)
     if len(extra_args) > 0 and extra_args[0] == "--":
