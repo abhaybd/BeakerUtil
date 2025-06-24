@@ -1,9 +1,11 @@
 from argparse import ArgumentParser
 from copy import deepcopy
+from datetime import datetime
 import os
 import re
 import sys
 import warnings
+warnings.filterwarnings("ignore", module="beaker")
 
 import yaml
 with warnings.catch_warnings():
@@ -54,7 +56,22 @@ def list_sessions(_, __):
                     reserved_str += f", {j.limits.cpu_count:g} CPU(s)"
                 reserved_str += "]"
 
-            print(f"\t{idx}: Session {j.id}{name_str} on node {n.hostname} {reserved_str}, status={j.status.current}")
+            job_created: datetime = j.status.created
+            now = datetime.now(job_created.tzinfo)
+            job_duration = now - job_created
+            days = job_duration.days
+            hours = job_duration.seconds // 3600
+            minutes = (job_duration.seconds % 3600) // 60
+            if days > 0:
+                duration_str = f"{days} days"
+            elif hours > 0:
+                duration_str = f"{hours} hours"
+            elif minutes > 0:
+                duration_str = f"{minutes} minute{'' if minutes == 1 else 's'}"
+            else:
+                duration_str = "less than a minute"
+
+            print(f"\t{idx}: Session {j.id}{name_str} on node {n.hostname} {reserved_str}, status={j.status.current}, running for {duration_str}")
             idx += 1
 
     if len(sessions):
