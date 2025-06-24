@@ -1,2 +1,2 @@
-beaker-py
+beaker-py~=1.0
 PyYAML

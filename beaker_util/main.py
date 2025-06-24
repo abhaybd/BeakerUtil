@@ -166,6 +166,47 @@ def view_config(args, _):
         raise ValueError(f"Unknown configuration type: {args.config_type}")
 
 
+def stop(args, _):
+    beaker = Beaker.from_env()
+    jobs = beaker.job.list(author=beaker.account.whoami().name)
+    if len(jobs) == 0:
+        print(f"No sessions found for author {beaker.account.whoami().name}.")
+        exit(1)
+    elif args.session_idx is not None:
+        if args.session_idx < 0 or args.session_idx >= len(jobs):
+            print(f"Invalid session index {args.session_idx}!")
+            exit(1)
+        inter, noninter = get_sessions_and_nodes(beaker)
+        if args.session_idx < len(inter):
+            job, _ = inter[args.session_idx]
+        else:
+            job, _ = noninter[args.session_idx - len(inter)]
+    elif args.name is not None:
+        job = next((s for s in jobs if s.name == args.name), None)
+        if job is None:
+            print(f"No session found with name {args.name}!")
+            exit(1)
+    elif args.id is not None:
+        job = next((s for s in jobs if s.id == args.id), None)
+        if job is None:
+            print(f"No session found with id {args.id}!")
+            exit(1)
+    elif len(jobs) == 1:
+        job = jobs[0]
+    else:
+        print("No session specified and no unique session found!")
+        exit(1)
+
+    assert isinstance(job, Job)  # for type checking
+    node = beaker.node.get(job.node)
+    is_interactive = job.kind == JobKind.session
+    print(f"Attempting to stop {'interactive' if is_interactive else 'noninteractive'} session {job.name or job.id} on node {node.hostname}...")
+    if is_interactive:
+        os.execlp("beaker", *f"beaker session stop {job.id}".split())
+    else:
+        os.execlp("beaker", *f"beaker job cancel {job.id}".split())
+
+
 def get_args(argv):
     parser = ArgumentParser(prog="beakerutil", description="Collection of utilities for Beaker", allow_abbrev=False)
     subparsers = parser.add_subparsers(required=True, dest="command")
@@ -194,6 +235,13 @@ def get_args(argv):
     config_parser = subparsers.add_parser("config", help="View configuration", allow_abbrev=False)
     config_parser.add_argument("config_type", help="The type of configuration to view", choices=["launch"])
     config_parser.set_defaults(func=view_config)
+
+    stop_parser = subparsers.add_parser("stop", help="Stop a running session", allow_abbrev=False)
+    stop_group = stop_parser.add_mutually_exclusive_group(required=False)
+    stop_group.add_argument("-n", "--name", help="The name of the session to stop")
+    stop_group.add_argument("-i", "--id", help="The id of the session to stop")
+    stop_group.add_argument("session_idx", type=int, nargs="?", help="The index of the session to stop")
+    stop_parser.set_defaults(func=stop)
 
     args, extra_args = parser.parse_known_args(argv)
     if len(extra_args) > 0 and extra_args[0] == "--":
