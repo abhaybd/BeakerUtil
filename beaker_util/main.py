@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+from typing import Any
 from copy import deepcopy
 from datetime import datetime
 import os
@@ -33,6 +34,21 @@ def get_sessions_and_nodes(beaker: Beaker):
 def find_clusters(beaker: Beaker, pattern: str):
     clusters = beaker.cluster.list()
     return [c for c in clusters if re.match(pattern, c.name)]
+
+
+def merge_configs(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+    ret = deepcopy(a)
+    for k, v in b.items():
+        if k in ret:
+            if isinstance(ret[k], dict) and isinstance(v, dict):
+                ret[k] = merge_configs(ret[k], v)
+            elif isinstance(ret[k], list) and isinstance(v, list):
+                ret[k] = ret[k] + v
+            else:
+                ret[k] = v
+        else:
+            ret[k] = v
+    return ret
 
 
 def list_sessions(_, __):
@@ -131,8 +147,7 @@ def launch_interactive(args, extra_args: list[str]):
         print(f"No launch configuration found for {args.launch_config}!")
         exit(1)
 
-    launch_conf = conf.get(DEFAULT_LAUNCH_CONFIG, {})
-    launch_conf.update(conf[args.launch_config])
+    launch_conf = merge_configs(conf[args.launch_config], conf.get(DEFAULT_LAUNCH_CONFIG, {}))
 
     clusters = find_clusters(beaker, launch_conf["cluster"])
     if len(clusters) == 0:
