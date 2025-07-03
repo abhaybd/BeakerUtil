@@ -14,7 +14,9 @@ Run `beakerutil -h` for more information.
 
 ### Using `beakerutil launch`
 
-With BeakerUtil, you can specify different launch configurations in `~/.beakerutil/launch.conf`, with different parameters. Clusters can be specified with a regex to match to multiple clusters. Additionally, the `DEFAULT` configuration specify parameters to be applied for every launch configuration, but can be overridden. For example, this is my `launch.conf`:
+With BeakerUtil, you can specify different launch configurations in `~/.beakerutil/launch.conf` with different parameters, which can effectively be used as an alias to launch sessions quickly. For example, with my config below, I can run `beakerlaunch phobos` to quickly launch a CPU-only job on phobos for managing files on WEKA.
+
+Clusters can be specified with a regex to match to multiple clusters. Additionally, the `DEFAULT` configuration specify parameters to be applied for every launch configuration, but can be overridden. For reference, this is my `launch.conf`:
 
 ```
 DEFAULT:
@@ -59,7 +61,7 @@ elanding:
 Extra arguments to pass to `beaker session create` can also be passed as additional positional arguments preceded by the delimeter `--`. For example, to name the interactive session, you could do:
 
 ```bash
-beakerlaunch -- -n foo
+beakerlaunch phobos -- -n foo
 ```
 
 ### Using `beakerutil list`
@@ -79,6 +81,10 @@ Interactive sessions:
     0: Session 01JBWFVSS0HNZWW5CT8C84F0J1 using 1 GPU(s) on prior-elanding-62.reviz.ai2.in, status=idle
 ```
 Running `beakerutil attach 0` will connect to the session at index 0. Alternatively, you can specify the session ID or name with the `--id` or `--name` flags, respectively. If you only have one session running (as is the case here), you can simply run `beakerutil attach` (with no arguments) to attach to that session.
+
+### Using `beakerutil stop`
+
+`beakerutil stop` can be used to easily cancel jobs or sessions. It has a similar usage as `beakerutil attach`, simply specify an index, ID, or name.
 
 ### Shortcuts
 
