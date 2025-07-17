@@ -78,25 +78,25 @@ def monitor(args, _):
         return
 
     exited_by_self = False
-    def monitor_curses(stdscr):
+    def monitor_curses(stdscr: curses.window):
         curses.curs_set(0)
         curses.start_color()
         curses.use_default_colors()
-        max_y, max_x = stdscr.getmaxyx()
 
         with closing(usage_generator()) as gen:
             try:
                 while True:
                     loop_start = time.perf_counter()
-                    stdscr.clear()
                     usage_data = next(gen)
+                    stdscr.clear()
+                    max_y, max_x = stdscr.getmaxyx()
                     lines = usage_data.split('\n')
                     for i, line in enumerate(lines):
                         if i < max_y:
                             stdscr.addstr(i, 0, line[:max_x])
-
                     stdscr.refresh()
                     loop_end = time.perf_counter()
+
                     sleep_time = args.interval - (loop_end - loop_start)
                     if sleep_time > 0:
                         time.sleep(sleep_time)
