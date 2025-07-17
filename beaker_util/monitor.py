@@ -5,7 +5,7 @@ from datetime import datetime
 from contextlib import closing
 
 import fabric
-from beaker import Beaker, JobKind
+from beaker import Beaker, JobKind, CurrentJobStatus
 import pandas as pd
 from tabulate import tabulate
 
@@ -13,11 +13,8 @@ from tabulate import tabulate
 def usage_generator():
     beaker = Beaker.from_env()
     jobs = beaker.job.list(author=beaker.account.whoami().name)
-    if len(jobs) == 0:
-        print(f"No jobs found for author {beaker.account.whoami().name}.")
-        exit(1)
 
-    experiments = [(j, beaker.node.get(j.node)) for j in jobs if j.kind == JobKind.execution]
+    experiments = [(j, beaker.node.get(j.node)) for j in jobs if j.kind == JobKind.execution and j.status.current in [CurrentJobStatus.running, CurrentJobStatus.idle]]
     experiments.sort(key=lambda x: x[1].hostname + x[0].id)
     hostnames = sorted(set(n.hostname for _, n in experiments))
     with closing(fabric.ThreadingGroup(*hostnames, forward_agent=False)) as connections:
@@ -30,8 +27,16 @@ def usage_generator():
                 assert isinstance(conn.host, str) and isinstance(output.stdout, str)
                 node_smi_output[conn.host] = pd.read_csv(io.StringIO(output.stdout), skipinitialspace=True)
                 node_smi_output[conn.host].set_index("uuid", inplace=True)
+            docker_output = connections.run("docker stats --no-stream --no-trunc --format json", hide=True)
+            node_docker_output: dict[str, pd.DataFrame] = {}
+            for conn, output in docker_output.items():
+                conn: fabric.Connection
+                output: fabric.Result
+                assert isinstance(conn.host, str) and isinstance(output.stdout, str)
+                node_docker_output[conn.host] = pd.read_json(io.StringIO(output.stdout), lines=True)
+                node_docker_output[conn.host].set_index("Name", inplace=True)
 
-            rows = [["Job", "Hostname", "GPU(s)", "VRAM", "GPU Utilization"]]
+            rows = [["Job", "Hostname", "CPU %", "RAM", "GPU(s)", "VRAM", "GPU %", "Network (In/Out)", "Disk (Write/Read)"]]
             for job, node in experiments:
                 hostname = node.hostname
                 gpus: list[str] = []
@@ -44,7 +49,20 @@ def usage_generator():
                         gpus.append(row["name"])
                         memory.append(f"{row['memory.used [MiB]']} / {row['memory.total [MiB]']}")
                         utilization.append(row['utilization.gpu [%]'])
-                rows.append([job.id, hostname, "\n".join(gpus), "\n".join(memory), "\n".join(utilization)])
+
+                docker_df = node_docker_output[hostname]
+                try:
+                    docker_row = docker_df.loc[f"execution-{job.id}".lower()]
+                except KeyError:
+                    continue
+                cpu_utilization : str= docker_row["CPUPerc"]
+                ram: str = docker_row["MemUsage"]
+                network_io: str = docker_row["NetIO"]
+                disk_io: str = docker_row["BlockIO"]
+
+                rows.append([job.id, hostname, cpu_utilization, ram, "\n".join(gpus), "\n".join(memory), "\n".join(utilization), network_io, disk_io])
+            if len(rows) == 1:
+                break
             timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
             table = tabulate(rows, headers="firstrow", tablefmt="grid")
             yield f"{timestamp}\n{table}"
@@ -52,10 +70,14 @@ def usage_generator():
 
 def monitor(args, _):
     if args.once:
-        with closing(usage_generator()) as gen:
-            print(next(gen))
+        try:
+            with closing(usage_generator()) as gen:
+                print(next(gen))
+        except StopIteration:
+            print("No running experiments detected.")
         return
 
+    exited_by_self = False
     def monitor_curses(stdscr):
         curses.curs_set(0)
         curses.start_color()
@@ -65,6 +87,7 @@ def monitor(args, _):
         with closing(usage_generator()) as gen:
             try:
                 while True:
+                    loop_start = time.perf_counter()
                     stdscr.clear()
                     usage_data = next(gen)
                     lines = usage_data.split('\n')
@@ -73,14 +96,18 @@ def monitor(args, _):
                             stdscr.addstr(i, 0, line[:max_x])
 
                     stdscr.refresh()
-                    time.sleep(args.interval)
+                    loop_end = time.perf_counter()
+                    sleep_time = args.interval - (loop_end - loop_start)
+                    if sleep_time > 0:
+                        time.sleep(sleep_time)
             except KeyboardInterrupt:
                 pass
+            except StopIteration:
+                nonlocal exited_by_self
+                exited_by_self = True
             finally:
                 curses.curs_set(1)
-    
+
     curses.wrapper(monitor_curses)
-
-
-if __name__ == "__main__":
-    monitor(None, None)
+    if exited_by_self:
+        print("No more running experiments detected, they may have finished.")
