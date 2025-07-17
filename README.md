@@ -64,6 +64,23 @@ Extra arguments to pass to `beaker session create` can also be passed as additio
 beakerlaunch phobos -- -n foo
 ```
 
+### Using `beakerutil monitor`
+
+`beakerutil monitor` can be used to monitor the resource usage of your running experiments. Example output could look like this:
+
+```
+07/17/2025 11:56:08
++----------------------------+---------------------------------+-------------+-------------------+-------------------+
+| Job                        | Hostname                        | GPU(s)      | VRAM              | GPU Utilization   |
++============================+=================================+=============+===================+===================+
+| 01K0CSRRM61YE677QB3BG1CAY4 | neptune-cs-aus-265.reviz.ai2.in |             |                   |                   |
++----------------------------+---------------------------------+-------------+-------------------+-------------------+
+| 01K0CSXV9ETG38XVCCQD1S7780 | neptune-cs-aus-265.reviz.ai2.in | NVIDIA L40S | 1 MiB / 46068 MiB | 0 %               |
++----------------------------+---------------------------------+-------------+-------------------+-------------------+
+```
+
+By default, it monitors continuously, updating every 2 seconds. Use the `-n` flag to modify the update interval, or use `--once` to print the usage once before exiting.
+
 ### Using `beakerutil list`
 
 `beakerutil list` is a straightforward command, it takes no arguments and prints the currently running beaker jobs, both interactive and noninteractive. For example, the output may look like this:
