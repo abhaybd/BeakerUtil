@@ -13,6 +13,9 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from beaker import Beaker, JobKind, Job, Node
 
+from beaker_util.monitor import monitor
+
+
 CONF_DIR = os.path.join(os.environ["HOME"], ".beakerutil")
 LAUNCH_CONF_PATH = os.path.abspath(os.path.join(CONF_DIR, "launch.conf"))
 DEFAULT_LAUNCH_CONFIG = "DEFAULT"
@@ -256,6 +259,12 @@ def get_args(argv):
 
     list_parser = subparsers.add_parser("list", help="List all sessions", allow_abbrev=False)
     list_parser.set_defaults(func=list_sessions)
+
+    monitor_parser = subparsers.add_parser("monitor", help="Monitor the resource usage of running experiments", allow_abbrev=False)
+    monitor_exc_group = monitor_parser.add_mutually_exclusive_group(required=False)
+    monitor_exc_group.add_argument("-n", "--interval", type=int, default=2, help="The interval in seconds between updates")
+    monitor_exc_group.add_argument("--once", action="store_true", help="Run once and exit instead of continuously updating")
+    monitor_parser.set_defaults(func=monitor)
 
     attach_parser = subparsers.add_parser("attach", help="Attach to a running session", allow_abbrev=False)
     attach_group = attach_parser.add_mutually_exclusive_group(required=False)

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="BeakerUtil",
-    version="0.2.5",
+    version="0.2.6",
     author="Abhay Deshpande",
     author_email="abhayd@allenai.org",
     description="Command-line tool for beaker utilities",
@@ -16,6 +16,14 @@ setup(
     },
     license="MIT",
     python_requires=">=3.9",
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3",
+        "Operating System :: POSIX :: Linux",
+        "Operating System :: MacOS",
+    ],
     entry_points={
         "console_scripts": [
             "beakerutil = beaker_util.main:main",
