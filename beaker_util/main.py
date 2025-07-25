@@ -1,9 +1,7 @@
 from argparse import ArgumentParser
-from typing import Any
 from copy import deepcopy
 from datetime import datetime
 import os
-import re
 import sys
 import warnings
 warnings.filterwarnings("ignore", module="beaker")
@@ -14,51 +12,12 @@ with warnings.catch_warnings():
     from beaker import Beaker, BeakerJob, BeakerNode, BeakerWorkloadStatus
 
 from beaker_util.monitor import monitor
-from beaker_util.utils import get_workloads_and_jobs, inject_beaker
+from beaker_util.utils import ConfigDumper, find_clusters, get_jobs_and_nodes, get_workloads_and_jobs, inject_beaker, merge_configs
 
 
 CONF_DIR = os.path.join(os.environ["HOME"], ".beakerutil")
 LAUNCH_CONF_PATH = os.path.abspath(os.path.join(CONF_DIR, "launch.conf"))
 DEFAULT_LAUNCH_CONFIG = "DEFAULT"
-
-
-def get_jobs_and_nodes(beaker: Beaker):
-    interactive_jobs: list[BeakerJob] = []
-    noninteractive_jobs: list[BeakerJob] = []
-    for workload in beaker.workload.list(author=beaker.user_name, finalized=False):
-        job = beaker.workload.get_latest_job(workload)
-        if job is not None:
-            if beaker.workload.is_environment(workload):
-                interactive_jobs.append(job)
-            elif beaker.workload.is_experiment(workload):
-                noninteractive_jobs.append(job)
-
-    interactive = [(j, beaker.node.get(j.assignment_details.node_id)) for j in interactive_jobs]
-    noninteractive = [(j, beaker.node.get(j.assignment_details.node_id)) for j in noninteractive_jobs]
-
-    interactive.sort(key=lambda x: x[1].hostname + x[0].id)
-    noninteractive.sort(key=lambda x: x[1].hostname + x[0].id)
-    return interactive, noninteractive
-
-
-def find_clusters(beaker: Beaker, pattern: str):
-    clusters = beaker.cluster.list()
-    return [c for c in clusters if re.match(pattern, f"{c.organization_name}/{c.name}")]
-
-
-def merge_configs(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
-    ret = deepcopy(a)
-    for k, v in b.items():
-        if k in ret:
-            if isinstance(ret[k], dict) and isinstance(v, dict):
-                ret[k] = merge_configs(ret[k], v)
-            elif isinstance(ret[k], list) and isinstance(v, list):
-                ret[k] = ret[k] + v
-            else:
-                ret[k] = v
-        else:
-            ret[k] = v
-    return ret
 
 
 @inject_beaker
@@ -187,17 +146,6 @@ def launch_interactive(beaker: Beaker, args, extra_args: list[str]):
     else:
         print(*beaker_cmd.split())
         os.execlp("beaker", *beaker_cmd.split())
-
-
-class ConfigDumper(yaml.SafeDumper):
-    """
-    Custom YAML dumper to insert blank lines between top-level objects.
-    See: https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
-    """
-    def write_line_break(self, data=None):
-        super().write_line_break(data)
-        if len(self.indents) == 1:
-            super().write_line_break()
 
 
 def view_config(args, _):
