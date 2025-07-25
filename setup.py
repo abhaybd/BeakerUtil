@@ -1,8 +1,12 @@
 from setuptools import setup, find_packages
 
+def get_version():
+    with open("VERSION.txt", "r") as f:
+        return f.read().strip()
+
 setup(
     name="BeakerUtil",
-    version="0.3.0",
+    version=get_version(),
     author="Abhay Deshpande",
     author_email="abhayd@allenai.org",
     description="Command-line tool for beaker utilities",
