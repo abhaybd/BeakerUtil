@@ -5,21 +5,29 @@ from datetime import datetime
 from contextlib import closing
 
 import fabric
-from beaker import Beaker, JobKind, CurrentJobStatus
+from beaker import Beaker, BeakerJob, BeakerNode, BeakerWorkloadStatus, BeakerWorkloadType
 import pandas as pd
 from tabulate import tabulate
 
+from beaker_util.utils import inject_beaker
 
-def usage_generator():
-    beaker = Beaker.from_env()
-    jobs = beaker.job.list(author=beaker.account.whoami().name)
 
-    experiments = [(j, beaker.node.get(j.node)) for j in jobs if j.kind == JobKind.execution and j.status.current in [CurrentJobStatus.running, CurrentJobStatus.idle]]
+@inject_beaker
+def usage_generator(beaker: Beaker):
+    workloads = beaker.workload.list(author=beaker.user_name, finalized=False, workload_type=BeakerWorkloadType.experiment)
+
+    experiments: list[tuple[BeakerJob, BeakerNode]] = []
+    for workload in workloads:
+        job = beaker.workload.get_latest_job(workload)
+        if job is not None and job.status.status == BeakerWorkloadStatus.running:
+            experiments.append((job, beaker.node.get(job.assignment_details.node_id)))
     experiments.sort(key=lambda x: x[1].hostname + x[0].id)
+
     hostnames = sorted(set(n.hostname for _, n in experiments))
     with closing(fabric.ThreadingGroup(*hostnames, forward_agent=False)) as connections:
         while True:
             smi_output = connections.run("nvidia-smi --query-gpu=uuid,name,memory.used,memory.total,utilization.gpu --format=csv", hide=True)
+            assert isinstance(smi_output, fabric.GroupResult)
             node_smi_output: dict[str, pd.DataFrame] = {}
             for conn, output in smi_output.items():
                 conn: fabric.Connection
@@ -42,9 +50,9 @@ def usage_generator():
                 gpus: list[str] = []
                 memory: list[str] = []
                 utilization: list[str] = []
-                if job.limits is not None:
+                if job.assignment_details.HasField("resource_assignment"):
                     smi_df = node_smi_output[hostname]
-                    for gpu in job.limits.gpus:
+                    for gpu in job.assignment_details.resource_assignment.gpus:
                         row = smi_df.loc[gpu]
                         gpus.append(row["name"])
                         memory.append(f"{row['memory.used [MiB]']} / {row['memory.total [MiB]']}")

@@ -11,9 +11,10 @@ warnings.filterwarnings("ignore", module="beaker")
 import yaml
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    from beaker import Beaker, JobKind, Job, Node
+    from beaker import Beaker, BeakerJob, BeakerNode, BeakerWorkloadStatus
 
 from beaker_util.monitor import monitor
+from beaker_util.utils import get_workloads_and_jobs, inject_beaker
 
 
 CONF_DIR = os.path.join(os.environ["HOME"], ".beakerutil")
@@ -21,14 +22,20 @@ LAUNCH_CONF_PATH = os.path.abspath(os.path.join(CONF_DIR, "launch.conf"))
 DEFAULT_LAUNCH_CONFIG = "DEFAULT"
 
 
-def requote(s: str):
-    return s.replace("\\", "\\\\").replace('"', "\\\"")
+def get_jobs_and_nodes(beaker: Beaker):
+    interactive_jobs: list[BeakerJob] = []
+    noninteractive_jobs: list[BeakerJob] = []
+    for workload in beaker.workload.list(author=beaker.user_name, finalized=False):
+        job = beaker.workload.get_latest_job(workload)
+        if job is not None:
+            if beaker.workload.is_environment(workload):
+                interactive_jobs.append(job)
+            elif beaker.workload.is_experiment(workload):
+                noninteractive_jobs.append(job)
 
+    interactive = [(j, beaker.node.get(j.assignment_details.node_id)) for j in interactive_jobs]
+    noninteractive = [(j, beaker.node.get(j.assignment_details.node_id)) for j in noninteractive_jobs]
 
-def get_sessions_and_nodes(beaker: Beaker):
-    sessions = beaker.job.list(author=beaker.account.whoami().name)
-    interactive = [(j, beaker.node.get(j.node)) for j in sessions if j.kind == JobKind.session]
-    noninteractive = [(j, beaker.node.get(j.node)) for j in sessions if j.kind == JobKind.execution]
     interactive.sort(key=lambda x: x[1].hostname + x[0].id)
     noninteractive.sort(key=lambda x: x[1].hostname + x[0].id)
     return interactive, noninteractive
@@ -36,7 +43,7 @@ def get_sessions_and_nodes(beaker: Beaker):
 
 def find_clusters(beaker: Beaker, pattern: str):
     clusters = beaker.cluster.list()
-    return [c for c in clusters if re.match(pattern, c.name)]
+    return [c for c in clusters if re.match(pattern, f"{c.organization_name}/{c.name}")]
 
 
 def merge_configs(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
@@ -54,12 +61,12 @@ def merge_configs(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
     return ret
 
 
-def list_sessions(_, __):
-    beaker = Beaker.from_env()
-    sessions = beaker.job.list(author=beaker.account.whoami().name)
+@inject_beaker
+def list_sessions(beaker: Beaker, _, __):
+    workloads, _ = get_workloads_and_jobs(beaker)
 
     idx = 0
-    def print_sessions(title, s: list[tuple[Job, Node]]):
+    def print_sessions(title, s: list[tuple[BeakerJob, BeakerNode]]):
         nonlocal idx
         if len(s) == 0:
             return
@@ -67,15 +74,15 @@ def list_sessions(_, __):
         for j, n in s:
             name_str = f" (name={j.name})" if j.name else ""
             reserved_str = "with no resources reserved"
-            if j.limits is not None:
-                reserved_str = f"using: [{len(j.limits.gpus)} GPU(s)"
-                if j.limits.memory:
-                    reserved_str += f", {j.limits.memory} of memory"
-                if j.limits.cpu_count:
-                    reserved_str += f", {j.limits.cpu_count:g} CPU(s)"
+            if j.assignment_details.HasField("resource_assignment"):
+                reserved_str = f"using: [{len(j.assignment_details.resource_assignment.gpus)} GPU(s)"
+                if j.assignment_details.resource_assignment.memory_bytes:
+                    reserved_str += f", {j.assignment_details.resource_assignment.memory_bytes} of memory"
+                if j.assignment_details.resource_assignment.cpu_count:
+                    reserved_str += f", {j.assignment_details.resource_assignment.cpu_count:g} CPU(s)"
                 reserved_str += "]"
 
-            job_created: datetime = j.status.created
+            job_created = datetime.fromtimestamp(j.status.created.seconds + j.status.created.nanos / 1e9)
             now = datetime.now(job_created.tzinfo)
             job_duration = now - job_created
             days = job_duration.days
@@ -90,55 +97,59 @@ def list_sessions(_, __):
             else:
                 duration_str = "less than a minute"
 
-            print(f"\t{idx}: Session {j.id}{name_str} on node {n.hostname} {reserved_str}, status={j.status.current}, running for {duration_str}")
+            print(f"\t{idx}: Session {j.id}{name_str} on node {n.hostname} {reserved_str}, status={BeakerWorkloadStatus(j.status.status).name}, running for {duration_str}")
             idx += 1
 
-    if len(sessions):
-        inter, noninter = get_sessions_and_nodes(beaker)
+    if len(workloads):
+        inter, noninter = get_jobs_and_nodes(beaker)
         print_sessions("Interactive sessions:", inter)
         print_sessions("Noninteractive sessions:", noninter)
     else:
-        print(f"No sessions found for author {beaker.account.whoami().name}.")
+        print(f"No sessions found for author {beaker.user_name}.")
 
 
-def attach(args, _):
-    beaker = Beaker.from_env()
-    sessions = beaker.job.list(author=beaker.account.whoami().name)
-    if len(sessions) == 0:
-        print(f"No sessions found for author {beaker.account.whoami().name}.")
+@inject_beaker
+def attach(beaker: Beaker, args, _):
+    workloads, jobs = get_workloads_and_jobs(beaker)
+    session_idxs = [i for i, w in enumerate(workloads) if beaker.workload.is_environment(w)]
+    session_workloads = [workloads[i] for i in session_idxs]
+    session_jobs = [jobs[i] for i in session_idxs]
+
+    assert isinstance(args.session_idx, (type(None), int))
+    if len(session_workloads) == 0:
+        print(f"No sessions found for author {beaker.user_name}.")
         exit(1)
     elif args.session_idx is not None:
-        if args.session_idx < 0 or args.session_idx >= len(sessions):
+        if args.session_idx < 0 or args.session_idx >= len(session_workloads):
             print(f"Invalid session index {args.session_idx}!")
             exit(1)
-        inter, noninter = get_sessions_and_nodes(beaker)
+        inter, _ = get_jobs_and_nodes(beaker)
         if args.session_idx < len(inter):
             session, _ = inter[args.session_idx]
         else:
-            session, _ = noninter[args.session_idx - len(inter)]
+            assert False, "This should never happen! session_idx < len(session_workloads) but session_idx >= len(inter)"
     elif args.name is not None:
-        session = next((s for s in sessions if s.name == args.name), None)
+        session = next((s for s in session_jobs if s.name == args.name), None)
         if session is None:
             print(f"No session found with name {args.name}!")
             exit(1)
     elif args.id is not None:
-        session = next((s for s in sessions if s.id == args.id), None)
+        session = next((s for s in session_jobs if s.id == args.id), None)
         if session is None:
             print(f"No session found with id {args.id}!")
             exit(1)
-    elif len(sessions) == 1:
-        session = sessions[0]
+    elif len(session_jobs) == 1:
+        session = session_jobs[0]
     else:
         print("No session specified and no unique session found!")
         exit(1)
-    node = beaker.node.get(session.node)
+    node = beaker.node.get(session.assignment_details.node_id)
     print(f"Attempting to attach to session {session.name or session.id} on node {node.hostname}...")
     os.execlp("beaker", *f"beaker session attach --remote {session.id}".split())
 
 
-def launch_interactive(args, extra_args: list[str]):
-    beaker = Beaker.from_env()
-
+@inject_beaker
+def launch_interactive(beaker: Beaker, args, extra_args: list[str]):
     try:
         with open(LAUNCH_CONF_PATH, "r") as f:
             conf: dict[str, dict[str, str]] = yaml.safe_load(f)
@@ -159,7 +170,7 @@ def launch_interactive(args, extra_args: list[str]):
 
     beaker_cmd = f"beaker session create -w {launch_conf['workspace']} --budget {launch_conf['budget']} --remote --bare"
     for cluster in clusters:
-        beaker_cmd += f" --cluster {cluster.name}"
+        beaker_cmd += f" --cluster {cluster.organization_name}/{cluster.name}"
     for mount in launch_conf.get("mounts", []):
         beaker_cmd += f" --mount src={mount['src']},ref={mount['ref']},dst={mount['dst']}"
     for env, secret in launch_conf.get("env_secrets", {}).items():
@@ -201,30 +212,32 @@ def view_config(args, _):
         raise ValueError(f"Unknown configuration type: {args.config_type}")
 
 
-def stop(args, _):
-    beaker = Beaker.from_env()
-    jobs = beaker.job.list(author=beaker.account.whoami().name)
-    if len(jobs) == 0:
-        print(f"No sessions found for author {beaker.account.whoami().name}.")
+@inject_beaker
+def stop(beaker: Beaker, args, _):
+    workloads, jobs = get_workloads_and_jobs(beaker)
+    assert isinstance(args.session_idx, (type(None), int))
+
+    if len(workloads) == 0:
+        print(f"No workloads found for author {beaker.user_name}.")
         exit(1)
     elif args.session_idx is not None:
-        if args.session_idx < 0 or args.session_idx >= len(jobs):
-            print(f"Invalid session index {args.session_idx}!")
+        if args.session_idx < 0 or args.session_idx >= len(workloads):
+            print(f"Invalid workload index {args.session_idx}!")
             exit(1)
-        inter, noninter = get_sessions_and_nodes(beaker)
+        inter, noninter = get_jobs_and_nodes(beaker)
         if args.session_idx < len(inter):
             job, _ = inter[args.session_idx]
         else:
             job, _ = noninter[args.session_idx - len(inter)]
     elif args.name is not None:
-        job = next((s for s in jobs if s.name == args.name), None)
+        job = next((j for j in jobs if j.name == args.name), None)
         if job is None:
-            print(f"No session found with name {args.name}!")
+            print(f"No job found with name {args.name}!")
             exit(1)
     elif args.id is not None:
-        job = next((s for s in jobs if s.id == args.id), None)
+        job = next((j for j in jobs if j.id == args.id), None)
         if job is None:
-            print(f"No session found with id {args.id}!")
+            print(f"No job found with id {args.id}!")
             exit(1)
     elif len(jobs) == 1:
         job = jobs[0]
@@ -232,9 +245,9 @@ def stop(args, _):
         print("No session specified and no unique session found!")
         exit(1)
 
-    assert isinstance(job, Job)  # for type checking
-    node = beaker.node.get(job.node)
-    is_interactive = job.kind == JobKind.session
+    node = beaker.node.get(job.assignment_details.node_id)
+    workload = beaker.workload.get(job.workload_id)
+    is_interactive = beaker.workload.is_environment(workload)
     print(f"Attempting to stop {'interactive' if is_interactive else 'noninteractive'} session {job.name or job.id} on node {node.hostname}...")
     if is_interactive:
         os.execlp("beaker", *f"beaker session stop {job.id}".split())
