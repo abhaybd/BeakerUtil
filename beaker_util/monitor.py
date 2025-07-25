@@ -63,7 +63,7 @@ def usage_generator(beaker: Beaker):
                     docker_row = docker_df.loc[f"execution-{job.id}".lower()]
                 except KeyError:
                     continue
-                cpu_utilization : str= docker_row["CPUPerc"]
+                cpu_utilization: str = docker_row["CPUPerc"]
                 ram: str = docker_row["MemUsage"]
                 network_io: str = docker_row["NetIO"]
                 disk_io: str = docker_row["BlockIO"]
@@ -86,6 +86,7 @@ def monitor(args, _):
         return
 
     exited_by_self = False
+
     def monitor_curses(stdscr: curses.window):
         curses.curs_set(0)
         curses.start_color()

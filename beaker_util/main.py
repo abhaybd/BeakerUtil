@@ -25,6 +25,7 @@ def list_sessions(beaker: Beaker, _, __):
     workloads, _ = get_workloads_and_jobs(beaker)
 
     idx = 0
+
     def print_sessions(title, s: list[tuple[BeakerJob, BeakerNode]]):
         nonlocal idx
         if len(s) == 0:

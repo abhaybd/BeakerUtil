@@ -11,10 +11,12 @@ class ConfigDumper(yaml.SafeDumper):
     Custom YAML dumper to insert blank lines between top-level objects.
     See: https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
     """
+
     def write_line_break(self, data=None):
         super().write_line_break(data)
         if len(self.indents) == 1:
             super().write_line_break()
+
 
 def inject_beaker(func):
     @wraps(func)
@@ -22,6 +24,7 @@ def inject_beaker(func):
         with Beaker.from_env() as beaker:
             return func(beaker, *args, **kwargs)
     return wrapper
+
 
 def get_workloads_and_jobs(beaker: Beaker):
     workloads = list(beaker.workload.list(author=beaker.user_name, finalized=False))
