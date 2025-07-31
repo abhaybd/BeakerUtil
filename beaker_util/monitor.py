@@ -44,31 +44,31 @@ def usage_generator(beaker: Beaker):
                 node_docker_output[conn.host] = pd.read_json(io.StringIO(output.stdout), lines=True)
                 node_docker_output[conn.host].set_index("Name", inplace=True)
 
-            rows = [["Job", "Hostname", "CPU %", "RAM", "GPU(s)", "VRAM", "GPU %", "Network (In/Out)", "Disk (Write/Read)"]]
+            rows = [["Job", "Hostname", "CPU %", "RAM", "GPU(s)", "GPU %", "VRAM", "Network (In/Out)", "Disk (Write/Read)"]]
             for job, node in experiments:
                 hostname = node.hostname
                 gpus: list[str] = []
-                memory: list[str] = []
-                utilization: list[str] = []
+                vram: list[str] = []
+                gpu_util: list[str] = []
                 if job.assignment_details.HasField("resource_assignment"):
                     smi_df = node_smi_output[hostname]
                     for gpu in job.assignment_details.resource_assignment.gpus:
                         row = smi_df.loc[gpu]
                         gpus.append(row["name"])
-                        memory.append(f"{row['memory.used [MiB]']} / {row['memory.total [MiB]']}")
-                        utilization.append(row['utilization.gpu [%]'])
+                        vram.append(f"{row['memory.used [MiB]']} / {row['memory.total [MiB]']}")
+                        gpu_util.append(row['utilization.gpu [%]'])
 
                 docker_df = node_docker_output[hostname]
                 try:
                     docker_row = docker_df.loc[f"execution-{job.id}".lower()]
                 except KeyError:
                     continue
-                cpu_utilization: str = docker_row["CPUPerc"]
+                cpu_util: str = docker_row["CPUPerc"]
                 ram: str = docker_row["MemUsage"]
                 network_io: str = docker_row["NetIO"]
                 disk_io: str = docker_row["BlockIO"]
 
-                rows.append([job.id, hostname, cpu_utilization, ram, "\n".join(gpus), "\n".join(memory), "\n".join(utilization), network_io, disk_io])
+                rows.append([job.id, hostname, cpu_util, ram, "\n".join(gpus), "\n".join(gpu_util), "\n".join(vram), network_io, disk_io])
             if len(rows) == 1:
                 break
             timestamp = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
