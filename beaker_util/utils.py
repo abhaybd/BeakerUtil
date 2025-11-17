@@ -2,8 +2,9 @@ from copy import deepcopy
 from functools import wraps
 from typing import Any
 import re
+from functools import cmp_to_key
 
-from beaker import Beaker, BeakerJob
+from beaker import Beaker, BeakerJob, BeakerNode
 import yaml
 
 
@@ -46,11 +47,25 @@ def get_jobs_and_nodes(beaker: Beaker):
             elif beaker.workload.is_experiment(workload):
                 noninteractive_jobs.append(job)
 
-    interactive = [(j, beaker.node.get(j.assignment_details.node_id)) for j in interactive_jobs]
-    noninteractive = [(j, beaker.node.get(j.assignment_details.node_id)) for j in noninteractive_jobs]
+    def get_node(j: BeakerJob):
+        return beaker.node.get(j.assignment_details.node_id) if j.assignment_details.node_id else None
 
-    interactive.sort(key=lambda x: x[1].hostname + x[0].id)
-    noninteractive.sort(key=lambda x: x[1].hostname + x[0].id)
+    interactive = [(j, get_node(j)) for j in interactive_jobs]
+    noninteractive = [(j, get_node(j)) for j in noninteractive_jobs]
+
+    def cmp(x1: tuple[BeakerJob, BeakerNode | None], x2: tuple[BeakerJob, BeakerNode | None]):
+        # group jobs by node and sort by ID within each group (queued jobs go last)
+        if x1[1] is None and x2[1] is not None:
+            return 1
+        elif x1[1] is not None and x2[1] is None:
+            return -1
+        elif x1[1] is None and x2[1] is None:
+            return -1 if x1[0].id < x2[0].id else 1
+        else:
+            return -1 if x1[1].hostname + x1[0].id < x2[1].hostname + x2[0].id else 1
+
+    interactive.sort(key=cmp_to_key(cmp))
+    noninteractive.sort(key=cmp_to_key(cmp))
     return interactive, noninteractive
 
 

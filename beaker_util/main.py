@@ -26,14 +26,14 @@ def list_sessions(beaker: Beaker, _, __):
 
     idx = 0
 
-    def print_sessions(title, s: list[tuple[BeakerJob, BeakerNode]]):
+    def print_sessions(title, s: list[tuple[BeakerJob, BeakerNode | None]]):
         nonlocal idx
         if len(s) == 0:
             return
         print(title)
         for j, n in s:
             name_str = f" (name={j.name})" if j.name else ""
-            reserved_str = "with no resources reserved"
+            reserved_str = "with no resources requested"
             if j.assignment_details.HasField("resource_assignment"):
                 reserved_str = f"using: [{len(j.assignment_details.resource_assignment.gpus)} GPU(s)"
                 if j.assignment_details.resource_assignment.memory_bytes:
@@ -57,7 +57,8 @@ def list_sessions(beaker: Beaker, _, __):
             else:
                 duration_str = "less than a minute"
 
-            print(f"\t{idx}: Session {j.id}{name_str} on node {n.hostname} {reserved_str}, status={BeakerWorkloadStatus(j.status.status).name}, running for {duration_str}")
+            node_str = f"on node {n.hostname}" if n is not None else "waiting for assignment"
+            print(f"\t{idx}: Session {j.id}{name_str} {node_str} {reserved_str}, status={BeakerWorkloadStatus(j.status.status).name}, running for {duration_str}")
             idx += 1
 
     if len(workloads):
