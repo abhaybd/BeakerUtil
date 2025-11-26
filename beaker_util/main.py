@@ -138,6 +138,8 @@ def launch_interactive(beaker: Beaker, args, extra_args: list[str]):
         beaker_cmd += f" --secret-env {env}={secret}"
     if "gpus" in launch_conf:
         beaker_cmd += f" --gpus {launch_conf['gpus']}"
+    if "port" in launch_conf:
+        beaker_cmd += f" --port {launch_conf['port']}"
 
     if len(extra_args) > 0:
         beaker_cmd += f" {' '.join(extra_args)}"
