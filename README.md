@@ -1,11 +1,14 @@
 # BeakerUtil
 
-This project is a collection of command-line utilities for [Beaker](https://beaker.org).
+This project is a collection of command-line utilities for [Beaker](https://beaker.org) within AllenAI.
 
 ## Installation
 
 1. Ensure that Beaker is set up locally by following [these instructions](https://beaker-docs.apps.allenai.org/start/install.html).
-2. Install this project with `pip install git+https://github.com/abhaybd/BeakerUtil.git@latest`
+2. Install this project with `pip install beakerutil`.
+
+> [!NOTE]
+> Instead of installing `BeakerUtil`, you can use `uvx beakerutil` to directly run the tool. On my machine, I set up the alias `bu="uvx beakerutil"` for convenience.
 
 ## Usage
 
