@@ -16,15 +16,6 @@ jobs:
         with:
           fetch-depth: 0  # Fetch all history for tag operations
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-
       - name: Extract version from VERSION.txt
         id: version
         run: |

@@ -35,5 +35,11 @@ setup(
         ]
     },
     packages=find_packages(),
-    install_requires=open("requirements.txt").read().split("\n")
+    install_requires=[
+        "beaker-py~=2.0",
+        "PyYAML~=6.0",
+        "fabric~=3.2",
+        "pandas~=2.3",
+        "tabulate>=0.9.0,<1.0.0",
+    ]
 )
