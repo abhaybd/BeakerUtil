@@ -50,6 +50,14 @@ jobs:
           git push origin "v${{ steps.version.outputs.version }}"
           echo "Created and pushed version tag v${{ steps.version.outputs.version }}"
 
+      - name: Trigger PyPI publish workflow
+        if: steps.tag-check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run publish-pypi.yml -f version="v${{ steps.version.outputs.version }}"
+          echo "Triggered publish-pypi.yml for v${{ steps.version.outputs.version }}"
+
       - name: Update latest tag
         run: |
           # Delete the latest tag locally and remotely if it exists
