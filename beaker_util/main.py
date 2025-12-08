@@ -1,15 +1,19 @@
 from argparse import ArgumentParser
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, Future
 from copy import deepcopy
 from datetime import datetime
 import os
+import re
 import sys
 import warnings
 warnings.filterwarnings("ignore", module="beaker")
 
 import yaml
+from tabulate import tabulate
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    from beaker import Beaker, BeakerJob, BeakerNode, BeakerWorkloadStatus
+    from beaker import Beaker, BeakerJob, BeakerNode, BeakerWorkloadStatus, BeakerCluster
 
 from beaker_util.monitor import monitor
 from beaker_util.utils import ConfigDumper, find_clusters, get_jobs_and_nodes, get_workloads_and_jobs, inject_beaker, merge_configs
@@ -207,6 +211,56 @@ def stop(beaker: Beaker, args, _):
         os.execlp("beaker", *f"beaker job cancel {job.id}".split())
 
 
+@inject_beaker
+def clusters(beaker: Beaker, args, _):
+    @inject_beaker
+    def get_cluster_info(b: Beaker, cluster: BeakerCluster):
+        n_gpu, n_used_gpu = 0, 0
+        node_free_gpus = defaultdict(int)
+        for node in list(b.node.list(cluster=cluster)):
+            if len(node.node_resources.gpu_ids) == 0:
+                continue
+            n_gpu += len(node.node_resources.gpu_ids)
+            node_used_gpu = 0
+            for job in b.job.list(scheduled_on_node=node, finalized=False):
+                if job.assignment_details.HasField("resource_assignment"):
+                    node_used_gpu += len(job.assignment_details.resource_assignment.gpus)
+            n_used_gpu += node_used_gpu
+            node_free_gpus[len(node.node_resources.gpu_ids) - node_used_gpu] += 1
+        return {
+            "name": cluster.name,
+            "used_gpus": n_used_gpu,
+            "gpus": n_gpu,
+            "node_gpu_availability": {**node_free_gpus},
+        }
+
+    with ThreadPoolExecutor(args.n_workers) as executor:
+        futures: list[Future[dict]] = []
+        for cluster in beaker.cluster.list(sort_field=args.sort):
+            if not args.filter or re.match(args.filter, cluster.name):
+                futures.append(executor.submit(get_cluster_info, cluster))
+
+        rows = []
+        for future in futures:
+            cluster_info = future.result()
+            if args.all or cluster_info['gpus'] > 0:
+                row = []
+                row.append(cluster_info['name'])
+                row.append(cluster_info['used_gpus'])
+                row.append(cluster_info['gpus'])
+                if args.print_node_availability and cluster_info['gpus'] > 0:
+                    node_free_gpus = cluster_info['node_gpu_availability']
+                    availability_str = "{" + ", ".join(f"{i}: {node_free_gpus.get(i, 0)}" for i in range(max(node_free_gpus.keys()) + 1)) + "}"
+                    row.append(availability_str)
+                #     print(f"\tNode Availability by # of GPUs: {availability_str}")
+                rows.append(row)
+        
+        headers = ["Cluster", "Used GPUs", "Total GPUs"]
+        if args.print_node_availability:
+            headers.append("Node Availability")
+        print(tabulate(rows, headers=headers))
+
+
 def get_args(argv):
     parser = ArgumentParser(prog="beakerutil", description="Collection of utilities for Beaker", allow_abbrev=False)
     subparsers = parser.add_subparsers(required=True, dest="command")
@@ -248,6 +302,17 @@ def get_args(argv):
     stop_group.add_argument("-i", "--id", help="The id of the session to stop")
     stop_group.add_argument("session_idx", type=int, nargs="?", help="The index of the session to stop")
     stop_parser.set_defaults(func=stop)
+
+    clusters_parser = subparsers.add_parser("clusters", help="List all clusters", allow_abbrev=False)
+    clusters_parser.add_argument("--sort", choices=["name", "total_gpus", "free_gpus"], default="total_gpus",
+        help="The field to sort by, defaults to total GPUs")
+    clusters_parser.add_argument("--all", help="Show all clusters, not just those with GPUs")
+    clusters_parser.add_argument("--print-node-availability", action="store_true")
+    clusters_parser.add_argument("--filter", default="(?!ai1)", nargs="?",
+        help="Regex specifying clusters to display. Defaults to everything except ai1 clusters.")
+    clusters_parser.add_argument("--n-workers", type=int, default=8,
+        help="Number of threads to use to fetch cluster information")
+    clusters_parser.set_defaults(func=clusters)
 
     args, extra_args = parser.parse_known_args(argv)
     if len(extra_args) > 0 and extra_args[0] == "--":
